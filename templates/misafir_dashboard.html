@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+
+{% block title %}Misafir Paneli{% endblock %} {# Updated title to Turkish to match other pages #}
+
+{% block content %}
+<h2 class="page-title">Misafir Paneli</h2> {# Using page-title class for consistency #}
+<p>Hoş geldiniz, <strong>{{ username }}</strong>! Burası misafir alanıdır.</p> {# Updated to Turkish #}
+<p>Sınırlı erişiminiz bulunmaktadır.</p> {# Updated to Turkish #}
+
+    {# Button to navigate to the tarih page #}
+<div style="margin-top: 20px;">
+    <a href="{{ url_for('tarih_page') }}" class="btn btn-primary">Tarih Sayfasını Görüntüle</a>
+</div>
+{% endblock %}

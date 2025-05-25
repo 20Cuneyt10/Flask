@@ -1,0 +1,26 @@
+# Python
+    __pycache__/
+    *.pyc
+    *.pyo
+    *.pyd
+    *.env
+    env/
+    venv/
+    ENV/
+    env.bak/
+    venv.bak/
+
+    # SQLite Database
+    # database.db  # Eğer veritabanı dosyasını GitHub'a yüklemek istemiyorsanız bu satırı aktif bırakın.
+                     # Bazı basit hosting platformları için başlangıçta tutmak işleri kolaylaştırabilir.
+                     # Yönetilen bir veritabanı kullanacaksanız kesinlikle eklemeyin.
+
+    # Instance folder (Flask)
+    instance/
+
+    # IDE ve OS dosyaları (isteğe bağlı ama önerilir)
+    .vscode/
+    .idea/
+    *.DS_Store
+    ```
+    **Not:** `database.db` satırı şu anda yorum satırı olarak bırakılmıştır (`#` ile). Eğer SQLite veritabanı dosyanızın GitHub'a yüklenmesini **istemiyorsanız**, başındaki `#` işaretini kaldırın. Çoğu durumda, özellikle hassas veriler içeriyorsa veya yönetilen bir veritabanı kullanacaksanız, veritabanı dosyasını yüklememek daha iyi bir pratiktir. Ancak, bazı basit barındırma platformları (örneğin PythonAnywhere'in ücretsiz katmanı) için başlangıçta SQLite dosyasını yüklemek dağıtımı kolaylaştırabilir. Bu sizin tercihinize ve kullanacağınız barındırma platformuna bağlıdır.

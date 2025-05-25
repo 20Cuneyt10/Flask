@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+
+{% block title %}Yönetici Paneli{% endblock %}
+
+{% block content %}
+<h2 class="page-title">Yönetici Paneli</h2>
+<p>Hoş geldiniz, <strong>{{ session.username }}</strong>!</p>
+
+<h3>Yeni Misafir Hesabı Oluştur</h3>
+<form method="POST" action="{{ url_for('admin_dashboard') }}">
+    <div class="form-group">
+        <label for="misafir_username">Misafir Kullanıcı Adı:</label>
+        <input type="text" id="misafir_username" name="misafir_username" class="form-control" required>
+    </div>
+    <div class="form-group">
+        <label for="misafir_password">Misafir Şifresi:</label>
+        <input type="password" id="misafir_password" name="misafir_password" class="form-control" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Misafir Ekle</button>
+</form>
+
+<hr>
+<h3>Mevcut Misafir Hesapları</h3>
+    {% if misafir_accounts %}
+<ul>
+    {# Corrected loop: Iterate directly over the list of account objects #}
+    {# Each 'account' is a Row object from which you can access columns by name #}
+    {% for account in misafir_accounts %}
+    <li>{{ account['username'] }}</li>
+    {% endfor %}
+</ul>
+    {% else %}
+<p>Henüz oluşturulmuş misafir hesabı yok.</p>
+    {% endif %}
+{% endblock %}
