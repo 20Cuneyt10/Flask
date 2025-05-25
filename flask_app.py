@@ -2,87 +2,65 @@ import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import datetime # For timestamps
 
-# Flask uygulamasını başlat
+# Flask application setup
 app = Flask(__name__)
 
-# GİZLİ ANAHTAR: Render'da ortam değişkeni olarak ayarlanmalı
-# Yerel geliştirme için bir varsayılan değer de sağlayabilirsiniz.
-app.secret_key = os.environ.get('SECRET_KEY', 'cok_guclu_bir_yerel_gizli_anahtar_olmalı_burada')
+# SECRET_KEY: Hardcoded here.
+# KESİNLİKLE BU DEĞERİ KENDİ GÜÇLÜ VE RASTGELE ANAHTARINIZLA DEĞİŞTİRİN!
+# Terminalde python -c "import os; print(os.urandom(24).hex())" ile üretebilirsiniz.
+app.secret_key = 'SizinCokGucluVeTahminEdilemezGizliAnahtarınızBuraya123!@#'
 
-# Veritabanı dosyasının adı (proje kök dizininde oluşturulacak)
+# Database file name
 DATABASE = 'database.db'
 
 def get_db():
-    """Mevcut uygulama bağlamı için veritabanı bağlantısını açar veya döndürür."""
+    """Opens a new database connection if there is none yet for the
+    current application context.
+    """
     db = getattr(g, '_database', None)
     if db is None:
-        # Veritabanı yolunu app.root_path'e göre belirle
-        # app.root_path, flask_app.py (veya app.py) dosyasının bulunduğu dizindir.
         db_path = os.path.join(app.root_path, DATABASE)
         db = g._database = sqlite3.connect(db_path)
-        db.row_factory = sqlite3.Row # Sütun adlarıyla erişim için
+        db.row_factory = sqlite3.Row  # Access columns by name
     return db
 
 @app.teardown_appcontext
 def close_connection(exception):
-    """Uygulama bağlamı sona erdiğinde veritabanı bağlantısını kapatır."""
+    """Closes the database again at the end of the request."""
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
 
 def init_db():
-    """Veritabanı şemasını (schema.sql) kullanarak tabloları oluşturur ve
-       varsayılan bir yönetici kullanıcı ekler (eğer mevcut değilse)."""
-    # Bu fonksiyonun bir uygulama bağlamı içinde çağrılması gerekir.
-    # with app.app_context(): # Zaten ensure_db_initialized içindeki app_context'ten çağrılacak
-    db = get_db()
-    # schema.sql dosyasının flask_app.py ile aynı dizinde olduğundan emin olun
-    with app.open_resource('schema.sql', mode='r') as f:
-        db.cursor().executescript(f.read())
-    db.commit()
-
-    # Varsayılan yönetici hesabını kontrol et ve yoksa ekle
-    # Kendi istediğiniz yönetici kullanıcı adını kullanın
-    admin_username_to_check = os.environ.get('ADMIN_USERNAME', 'myaccount')
-    cursor = db.execute("SELECT * FROM users WHERE username = ?", (admin_username_to_check,))
-    admin_exists = cursor.fetchone()
-
-    if not admin_exists:
-        # Ortam değişkeninden yönetici şifresini alın veya bir varsayılan (güçlü) şifre kullanın
-        # CANLI ORTAMDA KESİNLİKLE GÜÇLÜ BİR ŞİFRE KULLANIN VE ORTAM DEĞİŞKENİNDEN ALIN!
-        admin_password = os.environ.get('ADMIN_PASSWORD', 'GucluBirSifreBuraya123!')
-        if admin_password == 'GucluBirSifreBuraya123!':
-            print(f"UYARI: Varsayılan ADMIN_PASSWORD kullanılıyor. Lütfen Render'da bir ortam değişkeni ayarlayın.")
-
-        admin_password_hash = generate_password_hash(admin_password)
-        db.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                   (admin_username_to_check, admin_password_hash, 'admin'))
+    """Initializes the database using schema.sql and adds a default admin user
+    if one doesn't exist. This function should be called within an app context.
+    """
+    with app.app_context():
+        db = get_db()
+        with app.open_resource('schema.sql', mode='r') as f:
+            db.cursor().executescript(f.read())
         db.commit()
-        print(f"Varsayılan yönetici hesabı ('{admin_username_to_check}') oluşturuldu.")
-    else:
-        print(f"Yönetici hesabı ('{admin_username_to_check}') zaten mevcut.")
 
+        # Admin credentials are hardcoded here.
+        # KENDİ YÖNETİCİ KULLANICI ADINIZI VE GÜÇLÜ ŞİFRENİZİ YAZIN!
+        admin_username_to_create = 'admingizli'
+        admin_password_for_hash = 'GucluSifre123!@#'
 
-# --- Veritabanının başlatıldığından emin olmak için fonksiyon ---
-def ensure_db_initialized():
-    """Uygulama ilk yüklendiğinde veritabanının var olup olmadığını kontrol eder
-       ve gerekirse init_db() fonksiyonunu çağırır."""
-    # Bu yol, Gunicorn'un çalıştığı yere göre (genellikle proje kök dizini) görecelidir.
-    db_file_path = os.path.join(app.root_path, DATABASE) # app.root_path ile daha güvenli
-    if not os.path.exists(db_file_path):
-        print(f"'{DATABASE}' bulunamadı (beklenen yol: {db_file_path}). Veritabanı başlatılıyor...")
-        # init_db() bir uygulama bağlamı gerektirir.
-        with app.app_context():
-            init_db()
-            print("Veritabanı başarıyla başlatıldı.")
-    else:
-        print(f"'{DATABASE}' zaten mevcut (yol: {db_file_path}).")
+        cursor = db.execute("SELECT id FROM users WHERE username = ?", (admin_username_to_create,))
+        admin_exists = cursor.fetchone()
 
-# Bu satır, Gunicorn modülü ilk yüklediğinde çalışır.
-ensure_db_initialized()
+        if not admin_exists:
+            admin_password_hash = generate_password_hash(admin_password_for_hash)
+            db.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                       (admin_username_to_create, admin_password_hash, 'admin'))
+            db.commit()
+            print(f"Default admin account ('{admin_username_to_create}') created with the hardcoded password.")
+        else:
+            print(f"Admin account ('{admin_username_to_create}') already exists.")
 
-# --- Yardımcı Fonksiyonlar ---
+# --- Helper Functions ---
 def is_logged_in():
     return "username" in session
 
@@ -92,7 +70,7 @@ def is_admin():
 def is_misafir():
     return is_logged_in() and session.get("role") == "misafir"
 
-# --- Rotalar ---
+# --- Routes ---
 @app.route('/')
 def home():
     if not is_logged_in():
@@ -101,7 +79,7 @@ def home():
         return redirect(url_for('admin_dashboard'))
     elif is_misafir():
         return redirect(url_for('misafir_dashboard'))
-    flash("Bilinmeyen rol veya oturum açılmamış.", "danger")
+    flash("Unknown role or not logged in.", "danger")
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -109,22 +87,42 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        
+        ip_address = request.remote_addr
+        current_time_dt = datetime.datetime.now()
+        current_time_str = current_time_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        print(f"Login Attempt: Time={current_time_str}, IP={ip_address}, Username='{username}'")
+
         db = get_db()
         cursor = db.execute("SELECT * FROM users WHERE username = ?", (username,))
         user = cursor.fetchone()
 
+        login_success = False
         if user and check_password_hash(user["password_hash"], password):
+            login_success = True
             session["username"] = user["username"]
             session["role"] = user["role"]
             flash('Giriş başarılı!', 'success')
+            print(f"Successful Login: Time={current_time_str}, IP={ip_address}, Username='{username}'")
+        else:
+            flash('Geçersiz kullanıcı adı veya şifre. Kayıtlı olmayan kullanıcılar giriş yapamaz.', 'danger')
+            print(f"Failed Login: Time={current_time_str}, IP={ip_address}, Username='{username}'")
+
+        try:
+            db.execute("INSERT INTO login_attempts (timestamp, ip_address, attempted_username, success) VALUES (?, ?, ?, ?)",
+                       (current_time_dt, ip_address, username, login_success))
+            db.commit()
+        except Exception as e:
+            print(f"Error logging login attempt to DB: {e}")
+
+        if login_success:
             if user["role"] == "admin":
                 return redirect(url_for('admin_dashboard'))
             elif user["role"] == "misafir":
                 return redirect(url_for('misafir_dashboard'))
         else:
-            flash('Geçersiz kullanıcı adı veya şifre. Kayıtlı olmayan kullanıcılar giriş yapamaz.', 'danger')
             return redirect(url_for('login'))
+
     return render_template('login.html')
 
 @app.route('/logout')
@@ -141,14 +139,14 @@ def admin_dashboard():
         return redirect(url_for('login'))
 
     db = get_db()
-    if request.method == 'POST':
+    if request.method == 'POST': # Handles adding new misafir accounts
         misafir_username = request.form.get('misafir_username')
         misafir_password = request.form.get('misafir_password')
 
         if not misafir_username or not misafir_password:
             flash('Misafir kullanıcı adı ve şifresi boş olamaz.', 'warning')
         else:
-            cursor = db.execute("SELECT * FROM users WHERE username = ?", (misafir_username,))
+            cursor = db.execute("SELECT id FROM users WHERE username = ?", (misafir_username,))
             existing_user = cursor.fetchone()
             if existing_user:
                 flash(f'"{misafir_username}" kullanıcı adı zaten mevcut.', 'warning')
@@ -160,9 +158,34 @@ def admin_dashboard():
                 flash(f'Misafir hesabı "{misafir_username}" başarıyla oluşturuldu!', 'success')
         return redirect(url_for('admin_dashboard'))
 
-    cursor = db.execute("SELECT username, role FROM users WHERE role = 'misafir'")
-    misafir_accounts = cursor.fetchall()
-    return render_template('admin_dashboard.html', misafir_accounts=misafir_accounts)
+    cursor_misafir = db.execute("SELECT id, username, role FROM users WHERE role = 'misafir'")
+    misafir_accounts = cursor_misafir.fetchall()
+
+    cursor_attempts = db.execute(
+        "SELECT timestamp, ip_address, attempted_username, success FROM login_attempts ORDER BY timestamp DESC LIMIT 20"
+    )
+    login_attempts_data = cursor_attempts.fetchall()
+
+    return render_template('admin_dashboard.html', misafir_accounts=misafir_accounts, login_attempts=login_attempts_data)
+
+@app.route('/delete_misafir/<string:username_to_delete>', methods=['POST'])
+def delete_misafir(username_to_delete):
+    if not is_admin():
+        flash('Bu işlem için yetkiniz yok.', 'danger')
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.execute("SELECT id FROM users WHERE username = ? AND role = 'misafir'", (username_to_delete,))
+    user_to_delete = cursor.fetchone()
+
+    if user_to_delete:
+        db.execute("DELETE FROM users WHERE username = ? AND role = 'misafir'", (username_to_delete,))
+        db.commit()
+        flash(f"'{username_to_delete}' adlı misafir kullanıcı başarıyla silindi.", 'success')
+    else:
+        flash(f"'{username_to_delete}' adlı misafir kullanıcı bulunamadı veya silme yetkiniz yok.", 'warning')
+
+    return redirect(url_for('admin_dashboard'))
 
 @app.route('/misafir_dashboard')
 def misafir_dashboard():
@@ -178,10 +201,16 @@ def tarih_page():
         return redirect(url_for('login'))
     return render_template('tarih.html')
 
-# Gunicorn bu bloğu çalıştırmayacağı için `if __name__ == '__main__':` bloğunu
-# ve içindeki app.run()'ı kaldırabilir veya yorum satırı yapabilirsiniz.
-# Yerel geliştirme için tutmak isterseniz, debug modunun False olduğundan emin olun.
-# if __name__ == '__main__':
-#     # ensure_db_initialized() # Bu zaten modül yüklendiğinde çağrılıyor
-#     print("Yerel geliştirme sunucusu başlatılıyor...")
-#     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)) ,debug=False) # Render için port ayarı
+# This block is for local development only.
+# PythonAnywhere uses a WSGI server and doesn't run this block.
+if __name__ == '__main__':
+    # For local development, you might want to initialize the DB if it doesn't exist.
+    # On PythonAnywhere, you run init_db() manually via the console the first time.
+    with app.app_context():
+        db_file = os.path.join(app.root_path, DATABASE)
+        if not os.path.exists(db_file):
+            print("Local database not found, initializing...")
+            init_db()
+            print("Local database initialized.")
+    print("Yerel geliştirme sunucusu başlatılıyor http://127.0.0.1:5000")
+    app.run(debug=True, port=5000)
