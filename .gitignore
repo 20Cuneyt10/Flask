@@ -11,7 +11,7 @@
     venv.bak/
 
     # SQLite Database
-    # database.db  # Eğer veritabanı dosyasını GitHub'a yüklemek istemiyorsanız bu satırı aktif bırakın.
+    database.db  # Eğer veritabanı dosyasını GitHub'a yüklemek istemiyorsanız bu satırı aktif bırakın.
                      # Bazı basit hosting platformları için başlangıçta tutmak işleri kolaylaştırabilir.
                      # Yönetilen bir veritabanı kullanacaksanız kesinlikle eklemeyin.
 

@@ -1,44 +1,88 @@
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 
+# Flask uygulamasını başlat
 app = Flask(__name__)
-app.secret_key = os.urandom(24) # Gerçek uygulamalarda bunu bir ortam değişkeninden alın.
 
+# GİZLİ ANAHTAR: Render'da ortam değişkeni olarak ayarlanmalı
+# Yerel geliştirme için bir varsayılan değer de sağlayabilirsiniz.
+app.secret_key = os.environ.get('SECRET_KEY', 'cok_guclu_bir_yerel_gizli_anahtar_olmalı_burada')
+
+# Veritabanı dosyasının adı (proje kök dizininde oluşturulacak)
 DATABASE = 'database.db'
 
 def get_db():
+    """Mevcut uygulama bağlamı için veritabanı bağlantısını açar veya döndürür."""
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
+        # Veritabanı yolunu app.root_path'e göre belirle
+        # app.root_path, flask_app.py (veya app.py) dosyasının bulunduğu dizindir.
+        db_path = os.path.join(app.root_path, DATABASE)
+        db = g._database = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row # Sütun adlarıyla erişim için
     return db
 
 @app.teardown_appcontext
 def close_connection(exception):
+    """Uygulama bağlamı sona erdiğinde veritabanı bağlantısını kapatır."""
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
 
 def init_db():
-    with app.app_context():
-        db = get_db()
-        with app.open_resource('schema.sql', mode='r') as f:
-            db.cursor().executescript(f.read())
+    """Veritabanı şemasını (schema.sql) kullanarak tabloları oluşturur ve
+       varsayılan bir yönetici kullanıcı ekler (eğer mevcut değilse)."""
+    # Bu fonksiyonun bir uygulama bağlamı içinde çağrılması gerekir.
+    # with app.app_context(): # Zaten ensure_db_initialized içindeki app_context'ten çağrılacak
+    db = get_db()
+    # schema.sql dosyasının flask_app.py ile aynı dizinde olduğundan emin olun
+    with app.open_resource('schema.sql', mode='r') as f:
+        db.cursor().executescript(f.read())
+    db.commit()
+
+    # Varsayılan yönetici hesabını kontrol et ve yoksa ekle
+    # Kendi istediğiniz yönetici kullanıcı adını kullanın
+    admin_username_to_check = os.environ.get('ADMIN_USERNAME', 'myaccount')
+    cursor = db.execute("SELECT * FROM users WHERE username = ?", (admin_username_to_check,))
+    admin_exists = cursor.fetchone()
+
+    if not admin_exists:
+        # Ortam değişkeninden yönetici şifresini alın veya bir varsayılan (güçlü) şifre kullanın
+        # CANLI ORTAMDA KESİNLİKLE GÜÇLÜ BİR ŞİFRE KULLANIN VE ORTAM DEĞİŞKENİNDEN ALIN!
+        admin_password = os.environ.get('ADMIN_PASSWORD', 'GucluBirSifreBuraya123!')
+        if admin_password == 'GucluBirSifreBuraya123!':
+            print(f"UYARI: Varsayılan ADMIN_PASSWORD kullanılıyor. Lütfen Render'da bir ortam değişkeni ayarlayın.")
+
+        admin_password_hash = generate_password_hash(admin_password)
+        db.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                   (admin_username_to_check, admin_password_hash, 'admin'))
         db.commit()
+        print(f"Varsayılan yönetici hesabı ('{admin_username_to_check}') oluşturuldu.")
+    else:
+        print(f"Yönetici hesabı ('{admin_username_to_check}') zaten mevcut.")
 
-        # İlk yönetici hesabını kontrol et ve yoksa ekle
-        cursor = db.execute("SELECT * FROM users WHERE username = ?", ('admingizli',))
-        admin_exists = cursor.fetchone()
-        if not admin_exists:
-            admin_password_hash = generate_password_hash("noteasytodothis123") 
-            db.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                       ('admingizli', admin_password_hash, 'admin'))
-            db.commit()
-            print("Varsayılan yönetici hesabı oluşturuldu: myaccount / adminpass123")
 
-# --- Yardımcı Fonksiyonlar (Değişiklik Yok) ---
+# --- Veritabanının başlatıldığından emin olmak için fonksiyon ---
+def ensure_db_initialized():
+    """Uygulama ilk yüklendiğinde veritabanının var olup olmadığını kontrol eder
+       ve gerekirse init_db() fonksiyonunu çağırır."""
+    # Bu yol, Gunicorn'un çalıştığı yere göre (genellikle proje kök dizini) görecelidir.
+    db_file_path = os.path.join(app.root_path, DATABASE) # app.root_path ile daha güvenli
+    if not os.path.exists(db_file_path):
+        print(f"'{DATABASE}' bulunamadı (beklenen yol: {db_file_path}). Veritabanı başlatılıyor...")
+        # init_db() bir uygulama bağlamı gerektirir.
+        with app.app_context():
+            init_db()
+            print("Veritabanı başarıyla başlatıldı.")
+    else:
+        print(f"'{DATABASE}' zaten mevcut (yol: {db_file_path}).")
+
+# Bu satır, Gunicorn modülü ilk yüklediğinde çalışır.
+ensure_db_initialized()
+
+# --- Yardımcı Fonksiyonlar ---
 def is_logged_in():
     return "username" in session
 
@@ -134,11 +178,10 @@ def tarih_page():
         return redirect(url_for('login'))
     return render_template('tarih.html')
 
-# Flask ile çalışırken g (global application context) objesini kullanmak daha doğru
-from flask import g
-
-if __name__ == '__main__':
-    init_db() # Uygulama ilk çalıştığında veritabanını ve yönetici hesabını oluşturur
-    print("--- Veritabanı Hazır ---")
-    print("--- Uygulama Başlatılıyor ---")
-    app.run(debug=True)
+# Gunicorn bu bloğu çalıştırmayacağı için `if __name__ == '__main__':` bloğunu
+# ve içindeki app.run()'ı kaldırabilir veya yorum satırı yapabilirsiniz.
+# Yerel geliştirme için tutmak isterseniz, debug modunun False olduğundan emin olun.
+# if __name__ == '__main__':
+#     # ensure_db_initialized() # Bu zaten modül yüklendiğinde çağrılıyor
+#     print("Yerel geliştirme sunucusu başlatılıyor...")
+#     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)) ,debug=False) # Render için port ayarı
